@@ -23,6 +23,9 @@ def main(args: argparse.Namespace) -> tuple[np.ndarray, np.ndarray]:
     # TODO: Split the dataset into a train set and a test set.
     # Use `sklearn.model_selection.train_test_split` method call, passing
     # arguments `test_size=args.test_size, random_state=args.seed`.
+    X_train, X_test, y_train, y_test = sklearn.model_selection.train_test_split(
+        dataset.data, dataset.target, test_size=args.test_size, random_state=args.seed
+    )
 
     # TODO: Process the input columns in the following way:
     #
@@ -40,6 +43,15 @@ def main(args: argparse.Namespace) -> tuple[np.ndarray, np.ndarray]:
     # In the output, first there should be all the one-hot categorical features,
     # and then the real-valued features. To process different dataset columns
     # differently, you can use `sklearn.compose.ColumnTransformer`.
+    cat_cols = [i for i in range(X_train.shape[1]) if np.all(X_train[:, i] % 1 == 0)]
+    num_cols = [i for i in range(X_train.shape[1]) if not np.all(X_train[:, i] % 1 == 0)]
+
+    transformer = sklearn.compose.ColumnTransformer(
+        transformers=[
+            ("cat", sklearn.preprocessing.OneHotEncoder(sparse_output=False, handle_unknown="ignore"), cat_cols),
+            ("num", sklearn.preprocessing.StandardScaler(), num_cols)
+        ]
+    )
 
     # TODO: To the current features, append polynomial features of order 2.
     # If the input values are `[a, b, c, d]`, you should append
@@ -47,18 +59,23 @@ def main(args: argparse.Namespace) -> tuple[np.ndarray, np.ndarray]:
     # features either manually, or you can employ the provided transformer
     #   sklearn.preprocessing.PolynomialFeatures(2, include_bias=False)
     # which appends such polynomial features of order 2 to the given features.
+    poly = sklearn.preprocessing.PolynomialFeatures(2, include_bias=False)
 
     # TODO: You can wrap all the feature processing steps into one transformer
     # by using `sklearn.pipeline.Pipeline`. Although not strictly needed, it is
     # usually comfortable.
+    pipeline = sklearn.pipeline.Pipeline([
+        ("transformer", transformer),
+        ("poly", poly)
+        ])
 
     # TODO: Fit the feature preprocessing steps (the composed pipeline with all of
     # them; or the individual steps, if you prefer) on the training data (using `fit`).
     # Then transform the training data into `train_data` (with a `transform` call;
     # however, you can combine the two methods into a single `fit_transform` call).
     # Finally, transform testing data to `test_data`.
-    train_data = ...
-    test_data = ...
+    train_data = pipeline.fit_transform(X_train)
+    test_data = pipeline.transform(X_test)
 
     return train_data[:5], test_data[:5]
 

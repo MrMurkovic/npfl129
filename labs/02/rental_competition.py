@@ -9,6 +9,7 @@ import urllib.request
 
 import numpy as np
 import numpy.typing as npt
+import sklearn
 
 parser = argparse.ArgumentParser()
 # These arguments will be set appropriately by ReCodEx, even if you change them.
@@ -59,7 +60,70 @@ def main(args: argparse.Namespace) -> Optional[npt.ArrayLike]:
         train = Dataset()
 
         # TODO: Train a model on the given dataset and store it in `model`.
-        model = ...
+        data, target = train.data, train.target
+
+        categorical = list(range(0, 8))
+        numeric = list(range(8,12))
+
+        def make_model(degree, alpha, interact):
+            """
+            Creates a regression pipeline. Preprocesses the data and adds L2 regularization.
+            :param degree: polynomial degree for numerical features
+            :param alpha: hyperparameter for L2 regularization
+            :param interact: add interaction terms (including categorical features)
+            :return: pipeline
+            """
+
+            num = sklearn.pipeline.Pipeline([
+                ("scale1", sklearn.preprocessing.StandardScaler()),
+                ("poly", sklearn.preprocessing.PolynomialFeatures(degree, include_bias=False)),
+                ("scale2", sklearn.preprocessing.StandardScaler())
+            ])
+
+            columns = sklearn.compose.ColumnTransformer([
+                ("cat", sklearn.preprocessing.OneHotEncoder(sparse_output=False, handle_unknown="ignore"), categorical),
+                ("num", num, numeric)
+            ])
+
+            steps = [("columns", columns)]
+
+            if interact:
+                steps += [("interact", sklearn.preprocessing.PolynomialFeatures(2, include_bias=False, interaction_only=True)),
+                          ("scale3", sklearn.preprocessing.StandardScaler())]
+
+            steps.append(("ridge",  sklearn.linear_model.Ridge(alpha=alpha)))
+
+            return sklearn.pipeline.Pipeline(steps)
+
+        kfold = sklearn.model_selection.KFold(n_splits=5, shuffle=True, random_state=args.seed)
+
+        def cv_rmse(degree, alpha, interact):
+            """
+            average RMSE for given hyperparameters
+            """
+            scores = sklearn.model_selection.cross_val_score(
+                make_model(degree, alpha, interact), data, target, cv=kfold, scoring="neg_root_mean_squared_error"
+            )
+            return -scores.mean()
+
+        best_rmse, best_params = np.inf, None
+
+        for interact in [False, True]:
+            for degree in range(1, 4):
+                for alpha in np.logspace(-3, 4, 8):
+                    rmse = cv_rmse(degree, alpha, interact)
+                    if rmse < best_rmse:
+                        best_rmse, best_params = rmse, (degree, alpha, interact)
+
+        degree, best_alpha, interact = best_params
+
+        for alpha in np.logspace(np.log10(best_alpha) - 0.5, np.log10(best_alpha) + 0.5, 9):
+            rmse = cv_rmse(degree, alpha, interact)
+            if rmse < best_rmse:
+                best_rmse, best_params = rmse, (degree, alpha, interact)
+
+        model = make_model(*best_params)
+        model.fit(data, target)
 
         # Serialize the model.
         with lzma.open(args.model_path, "wb") as model_file:
@@ -73,7 +137,7 @@ def main(args: argparse.Namespace) -> Optional[npt.ArrayLike]:
             model = pickle.load(model_file)
 
         # TODO: Generate `predictions` with the test set predictions.
-        predictions = ...
+        predictions = np.maximum(model.predict(test.data), 0)
 
         return predictions
 
