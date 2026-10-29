@@ -27,6 +27,9 @@ def main(args: argparse.Namespace) -> float:
     # TODO: Split the dataset into a train set and a test set.
     # Use `sklearn.model_selection.train_test_split` method call, passing
     # arguments `test_size=args.test_size, random_state=args.seed`.
+    train_data, test_data, train_target, test_target = sklearn.model_selection.train_test_split(
+        dataset.data, dataset.target, test_size=args.test_size, random_state=args.seed
+    )
 
     # TODO: Create a pipeline, which
     # 1. passes the inputs through `sklearn.preprocessing.MinMaxScaler()`,
@@ -43,7 +46,23 @@ def main(args: argparse.Namespace) -> float:
     # For the best combination of parameters, compute the test set accuracy.
     #
     # The easiest way is to use `sklearn.model_selection.GridSearchCV`.
-    test_accuracy = ...
+    pipeline = sklearn.pipeline.Pipeline([
+        ("scaler", sklearn.preprocessing.MinMaxScaler()),
+        ("poly", sklearn.preprocessing.PolynomialFeatures()),
+        ("lr", sklearn.linear_model.LogisticRegression(random_state=args.seed))
+    ])
+
+    param_grid = {
+        "poly__degree": [1, 2],
+        "lr__C": [0.01, 1, 100],
+        "lr__solver": ["lbfgs", "sag"]
+    }
+
+    cv = sklearn.model_selection.StratifiedKFold(n_splits=5)
+
+    model = sklearn.model_selection.GridSearchCV(pipeline, param_grid, cv=cv)
+    model.fit(train_data, train_target)
+    test_accuracy = sklearn.metrics.accuracy_score(test_target, model.predict(test_data))
 
     # If `model` is a fitted `GridSearchCV`, you can use the following code
     # to show the results of all the hyperparameter values evaluated:
