@@ -66,7 +66,16 @@ def main(args: argparse.Namespace) -> tuple[tuple[np.ndarray, ...], list[float]]
         # in softmax can easily overflow. To avoid it, you should use the fact that
         # $softmax(z) = softmax(z + any_constant)$ and compute $softmax(z) = softmax(z - maximum_of_z)$.
         # That way we only exponentiate values which are non-positive, and overflow does not occur.
-        raise NotImplementedError()
+
+        z1 = inputs @ weights[0] + biases[0]
+        hidden_layer = np.maximum(z1, 0)
+
+        z2 = hidden_layer @ weights[1] + biases[1]
+        z2_shifted = z2 - np.max(z2, axis=1, keepdims=True)
+        exp_z2 = np.exp(z2_shifted)
+        output_layer = exp_z2 / np.sum(exp_z2, axis=1, keepdims=True)
+
+        return hidden_layer, output_layer
 
     for epoch in range(args.epochs):
         permutation = generator.permutation(train_data.shape[0])
@@ -87,10 +96,38 @@ def main(args: argparse.Namespace) -> tuple[tuple[np.ndarray, ...], list[float]]
         # - compute the derivative with respect to the hidden layer output,
         # - compute the derivative with respect to the hidden layer input,
         # - compute the derivative with respect to `weights[0]` and `biases[0]`.
+        for i in range(0, train_data.shape[0], args.batch_size):
+            batch_idx = permutation[i:i +args.batch_size]
+            batch_x = train_data[batch_idx]
+            batch_y = train_target[batch_idx]
+
+            hidden_layer, output_layer = forward(batch_x)
+
+            y_one_hot = np.zeros_like(output_layer)
+            y_one_hot[np.arange(args.batch_size), batch_y] = 1
+
+            dz2 = (output_layer - y_one_hot) / args.batch_size
+
+            dw1 = hidden_layer.T @ dz2
+            db1 = np.sum(dz2, axis=0)
+
+            dhidden = dz2 @ weights[1].T
+            dz1 = dhidden * (hidden_layer > 0)
+
+            dw0 = batch_x.T @ dz1
+            db0 = np.sum(dz1, axis=0)
+
+            weights[0] -= args.learning_rate * dw0
+            biases[0] -= args.learning_rate * db0
+            weights[1] -= args.learning_rate * dw1
+            biases[1] -= args.learning_rate * db1
 
         # TODO: After the SGD epoch, measure the accuracy for both the
         # train test and the test set.
-        train_accuracy, test_accuracy = ...
+        _, train_output = forward(train_data)
+        _, test_output = forward(test_data)
+        train_preds, test_preds = np.argmax(train_output, axis=1), np.argmax(test_output, axis=1)
+        train_accuracy, test_accuracy = sklearn.metrics.accuracy_score(train_target, train_preds), sklearn.metrics.accuracy_score(test_target, test_preds)
 
         print("After epoch {}: train acc {:.1f}%, test acc {:.1f}%".format(
             epoch + 1, 100 * train_accuracy, 100 * test_accuracy))

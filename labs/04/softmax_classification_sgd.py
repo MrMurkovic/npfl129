@@ -64,10 +64,46 @@ def main(args: argparse.Namespace) -> tuple[np.ndarray, list[tuple[float, float]
         # $softmax(z) = softmax(z + any_constant)$ and compute $softmax(z) = softmax(z - maximum_of_z)$.
         # That way we only exponentiate non-positive values, and overflow does not occur.
 
+        for i in range(0, train_data.shape[0], args.batch_size):
+            batch_idx = permutation[i:i +args.batch_size]
+            batch_x = train_data[batch_idx]
+            batch_y = train_target[batch_idx]
+
+            z = batch_x @ weights
+            z_shifted = z - np.max(z, axis=1, keepdims=True)
+            exp_z = np.exp(z_shifted)
+            softmax = exp_z / np.sum(exp_z, axis=1, keepdims=True)
+
+            y_one_hot = np.zeros_like(softmax)
+            y_one_hot[np.arange(batch_idx.shape[0]), batch_y] = 1
+            gradient = (batch_x.T @ (softmax - y_one_hot)) / args.batch_size
+
+            weights -= args.learning_rate * gradient
+
+
+
         # TODO: After the SGD epoch, measure the average loss and accuracy for both the
         # train test and the test set. The loss is the average MLE loss (i.e., the
         # negative log-likelihood, or cross-entropy loss, or KL loss) per example.
-        train_accuracy, train_loss, test_accuracy, test_loss = ...
+
+        z_train = train_data @ weights
+        z_train_shifted = z_train - np.max(z_train, axis=1, keepdims=True)
+        exp_z_train = np.exp(z_train_shifted)
+        softmax_train = exp_z_train / np.sum(exp_z_train, axis=1, keepdims=True)
+
+        train_preds = np.argmax(softmax_train, axis=1)
+
+        z_test = test_data @ weights
+        z_test_shifted = z_test - np.max(z_test, axis=1, keepdims=True)
+        exp_z_test = np.exp(z_test_shifted)
+        softmax_test = exp_z_test / np.sum(exp_z_test, axis=1, keepdims=True)
+
+        test_preds = np.argmax(softmax_test, axis=1)
+
+        train_accuracy, train_loss, test_accuracy, test_loss = (sklearn.metrics.accuracy_score(train_target, train_preds),
+                                                                -np.mean(np.log(softmax_train[np.arange(train_data.shape[0]), train_target])),
+                                                                sklearn.metrics.accuracy_score(test_target, test_preds),
+                                                                -np.mean(np.log(softmax_test[np.arange(test_data.shape[0]), test_target])))
 
         print("After epoch {}: train loss {:.4f} acc {:.1f}%, test loss {:.4f} acc {:.1f}%".format(
             epoch + 1, train_loss, 100 * train_accuracy, test_loss, 100 * test_accuracy))

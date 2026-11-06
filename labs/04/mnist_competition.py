@@ -23,6 +23,7 @@ import urllib.request
 
 import numpy as np
 import numpy.typing as npt
+import sklearn
 
 parser = argparse.ArgumentParser()
 # These arguments will be set appropriately by ReCodEx, even if you change them.
@@ -62,14 +63,29 @@ def main(args: argparse.Namespace) -> Optional[npt.ArrayLike]:
         train = Dataset()
 
         # TODO: Train a model on the given dataset and store it in `model`.
-        model = ...
+        data = train.data / 255.0
 
-        # If you trained one or more MLPs, you can use the following code
-        # to compress it significantly (approximately 12 times). The snippet
-        # assumes the trained `MLPClassifier` is in the `mlp` variable.
-        #   mlp._optimizer = mlp._best_coefs = mlp._best_intercepts = None
-        #   for i in range(len(mlp.coefs_)): mlp.coefs_[i] = mlp.coefs_[i].astype(np.float16)
-        #   for i in range(len(mlp.intercepts_)): mlp.intercepts_[i] = mlp.intercepts_[i].astype(np.float16)
+        mlp = sklearn.neural_network.MLPClassifier(
+            hidden_layer_sizes=(512, 256),
+            activation="relu",
+            solver="adam",
+            alpha = 1e-4,
+            batch_size=128,
+            learning_rate_init=1e-3,
+            max_iter=1000,
+            random_state=args.seed,
+            verbose=True,
+        )
+        mlp.fit(data, train.target)
+
+
+        mlp._optimizer = mlp._best_coefs = mlp._best_intercepts = None
+        for i in range(len(mlp.coefs_)):
+            mlp.coefs_[i] = mlp.coefs_[i].astype(np.float16)
+        for i in range(len(mlp.intercepts_)):
+            mlp.intercepts_[i] = mlp.intercepts_[i].astype(np.float16)
+
+        model = mlp
 
         # Serialize the model.
         with lzma.open(args.model_path, "wb") as model_file:
@@ -83,7 +99,7 @@ def main(args: argparse.Namespace) -> Optional[npt.ArrayLike]:
             model = pickle.load(model_file)
 
         # TODO: Generate `predictions` with the test set predictions.
-        predictions = ...
+        predictions = model.predict(test.data / 255.0)
 
         return predictions
 
