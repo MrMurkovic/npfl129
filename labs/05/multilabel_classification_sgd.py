@@ -45,7 +45,9 @@ def main(args: argparse.Namespace) -> tuple[np.ndarray, list[tuple[float, float]
     # TODO: The `target` is a list of classes for every input example. Convert
     # it to a dense representation (n-hot encoding) -- for each input example,
     # the target should be vector of `args.classes` binary indicators.
-    target = ...
+    target = np.zeros((args.data_size, args.classes), dtype = int)
+    for i, labels in enumerate(target_list):
+        target[i, labels] = 1
 
     # Append a constant feature with value 1 to the end of all input data.
     # Then we do not need to explicitly represent bias - it becomes the last weight.
@@ -66,12 +68,45 @@ def main(args: argparse.Namespace) -> tuple[np.ndarray, list[tuple[float, float]
         # TODO: Process the data in the order of `permutation`. For every
         # `args.batch_size` of them, average their gradient, and update the weights.
         # You can assume that `args.batch_size` exactly divides `train_data.shape[0]`.
-        ...
+        for i in range(0, train_data.shape[0], args.batch_size):
+            batch_idx = permutation[i:i + args.batch_size]
+            batch_x = train_data[batch_idx]
+            batch_y = train_target[batch_idx]
+
+            z = batch_x @ weights
+            sigmoid = np.where(z >= 0, 1 / (1 + np.exp(-z)), np.exp(z) / (1 + np.exp(z)))
+
+            gradient = (batch_x.T @ (sigmoid - batch_y)) / args.batch_size
+            weights -= args.learning_rate * gradient
 
         # TODO: After the SGD epoch, compute the micro-averaged and the
         # macro-averaged F1-score for both the train test and the test set.
         # Compute these scores manually, without using `sklearn.metrics`.
-        train_f1_micro, train_f1_macro, test_f1_micro, test_f1_macro = ...
+        def compute_f1(X, y_true):
+            z = X @ weights
+            y_pred = (z >= 0).astype(int)
+
+            tp = np.sum((y_pred == 1) & (y_true == 1), axis=0)
+            fp = np.sum((y_pred == 1) & (y_true == 0), axis=0)
+            fn = np.sum((y_pred == 0) & (y_true == 1), axis=0)
+
+            denominator_class = 2 * tp + fp + fn
+
+            f1_per_class = np.zeros(args.classes)
+            valid_classes = denominator_class > 0
+            f1_per_class[valid_classes] = (2 * tp[valid_classes]) / denominator_class[valid_classes]
+            macro_f1 = np.mean(f1_per_class)
+
+            tp_sum = np.sum(tp)
+            fp_sum = np.sum(fp)
+            fn_sum = np.sum(fn)
+            denominator_total = 2 * tp_sum + fp_sum + fn_sum
+            micro_f1 = (2 * tp_sum) / denominator_total if  denominator_total > 0 else 0.0
+
+            return micro_f1, macro_f1
+
+        train_f1_micro, train_f1_macro = compute_f1(train_data, train_target)
+        test_f1_micro, test_f1_macro = compute_f1(test_data, test_target)
 
         print("After epoch {}: train F1 micro {:.2f}% macro {:.2f}%, test F1 micro {:.2f}% macro {:.1f}%".format(
             epoch + 1, 100 * train_f1_micro, 100 * train_f1_macro, 100 * test_f1_micro, 100 * test_f1_macro))
