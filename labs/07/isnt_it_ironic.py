@@ -23,6 +23,10 @@ import urllib.request
 
 import numpy as np
 import numpy.typing as npt
+import sklearn.feature_extraction.text
+import sklearn.linear_model
+import sklearn.model_selection
+import sklearn.pipeline
 
 parser = argparse.ArgumentParser()
 # These arguments will be set appropriately by ReCodEx, even if you change them.
@@ -63,7 +67,18 @@ def main(args: argparse.Namespace) -> Optional[npt.ArrayLike]:
         train = Dataset()
 
         # TODO: Train a model on the given dataset and store it in `model`.
-        model = ...
+        model = sklearn.pipeline.make_pipeline(
+            sklearn.pipeline.make_union(
+                sklearn.feature_extraction.text.TfidfVectorizer(
+                    ngram_range=(1, 2), lowercase=True, sublinear_tf=True, min_df=1, token_pattern=r"\S+"
+                ),
+                sklearn.feature_extraction.text.TfidfVectorizer(
+                    analyzer="char", ngram_range=(1, 4), lowercase=False, sublinear_tf=True, min_df=2
+                )
+            ),
+            sklearn.linear_model.LogisticRegression(C=1, class_weight="balanced", max_iter=1000)
+        )
+        model.fit(train.data, train.target)
 
         # Serialize the model.
         with lzma.open(args.model_path, "wb") as model_file:
@@ -78,7 +93,7 @@ def main(args: argparse.Namespace) -> Optional[npt.ArrayLike]:
 
         # TODO: Generate `predictions` with the test set predictions, either
         # as a Python list or a NumPy array.
-        predictions = ...
+        predictions = model.predict(test.data)
 
         return predictions
 

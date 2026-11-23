@@ -60,12 +60,37 @@ def main(args: argparse.Namespace) -> tuple[float, float]:
     #   during both estimation and prediction.
     #
     # In all cases, the class prior is the distribution of the train data classes.
+    log_priors = np.log(np.bincount(train_target, minlength=args.classes) / len(train_target))
+
+    if args.naive_bayes_type == "gaussian":
+        means = np.array([train_data[train_target == k].mean(axis=0) for k in range(args.classes)])
+        variances = np.array([train_data[train_target == k].var(axis=0) for k in range(args.classes)]) + args.alpha
+    elif args.naive_bayes_type == "multinomial":
+        sums = np.array([train_data[train_target == k].sum(axis=0) for k in range(args.classes)])
+        log_probs = np.log((sums + args.alpha) / (sums.sum(axis=1, keepdims=True) + args.alpha * train_data.shape[1]))
+    else:
+        binary = train_data >= 8
+        ones = np.array([binary[train_target == k].sum(axis=0) for k in range(args.classes)])
+        counts = np.bincount(train_target, minlength=args.classes)[:, np.newaxis]
+        probs = (ones + args.alpha) / (counts + 2 * args.alpha)
 
     # TODO: Predict the test data classes, and compute
     # - the test set accuracy, and
     # - the joint log-probability of the test set, i.e.,
     #     \sum_{(x_i, t_i) \in test set} \log P(x_i, t_i).
-    test_accuracy, test_log_probability = ...
+    if args.naive_bayes_type == "gaussian":
+        log_likelihoods = np.stack([
+            scipy.stats.norm.logpdf(test_data, loc=means[k], scale=np.sqrt(variances[k])).sum(axis=1)
+            for k in range(args.classes)], axis=1)
+    elif args.naive_bayes_type == "multinomial":
+        log_likelihoods = test_data @ log_probs.T
+    else:
+        binary = test_data >= 8
+        log_likelihoods = binary @ np.log(probs).T + (~binary) @ np.log(1 - probs).T
+
+    joint = log_likelihoods + log_priors
+    test_accuracy = np.mean(np.argmax(joint, axis=1) == test_target)
+    test_log_probability = joint[np.arange(len(test_target)), test_target].sum()
 
     return 100 * test_accuracy, test_log_probability
 

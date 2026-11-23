@@ -79,7 +79,23 @@ def main(args: argparse.Namespace) -> float:
     # - "uniform": all nearest neighbors have the same weight,
     # - "inverse": `1/distances` is used as weights,
     # - "softmax": `softmax(-distances)` is used as weights.
-    test_predictions = ...
+    test_neighbors = np.zeros((len(test_data), args.k), dtype=int)
+    test_predictions = np.zeros(len(test_data), dtype=int)
+    n_classes = np.max(train_target) + 1
+    for i, x in enumerate(test_data):
+        distances = np.sum(np.abs(train_data - x) ** args.p, axis=1) ** (1 / args.p)
+        neighbors = np.argsort(distances, kind="stable")[:args.k]
+        test_neighbors[i] = neighbors
+        neighbor_distances = distances[neighbors]
+        if args.weights == "uniform":
+            weights = np.ones(args.k)
+        elif args.weights == "inverse":
+            weights = 1 / neighbor_distances
+        else:
+            weights = np.exp(-neighbor_distances - np.max(-neighbor_distances))
+            weights /= weights.sum()
+        votes = np.bincount(train_target[neighbors], weights=weights, minlength=n_classes)
+        test_predictions[i] = np.argmax(votes)
 
     accuracy = sklearn.metrics.accuracy_score(test_target, test_predictions)
 
