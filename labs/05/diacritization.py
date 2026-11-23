@@ -176,6 +176,51 @@ def main(args: argparse.Namespace) -> Optional[str]:
         # produce a diacritized `str` with exactly the same number of words as `test.data`.
 
         predictions = predict_text(model, test.data)
+
+        from diacritization_dictionary import Dictionary
+        dictionary = Dictionary()
+        text = test.data
+        lowered = lower_chars(text)
+        data_array = np.array(list(lowered))
+
+        logprobs = {}
+        for letter, (encoder, classifier, constant) in model["letters"].items():
+            positions = np.flatnonzero(data_array == letter)
+            if len(positions) == 0:
+                continue
+            if classifier is None:
+                for position in positions:
+                    logprobs[position] = {constant: 0.0}
+            else:
+                proba = classifier.predict_proba(
+                    encoder.transform(build_features(lowered, positions, model["window"])))
+                for position, row in zip(positions, np.log(proba + 1e-12)):
+                    logprobs[position] = dict(zip(classifier.classes_, row))
+
+        output = list(predictions)
+        for match in WORD.finditer(lowered):
+            start, end = match.start(), match.end()
+            candidates = dictionary.variants.get(text[start:end]) or dictionary.variants.get(match.group())
+            candidates = [c for c in candidates or [] if len(lower_chars(c)) == end - start]
+            if not candidates:
+                continue
+
+            def score(candidate):
+                total = 0.0
+                for i, char in enumerate(lower_chars(candidate)):
+                    position = start + i
+                    if position in logprobs:
+                        total += logprobs[position].get(char, -30.0)
+                    elif char != lowered[position]:
+                        total += -30.0
+                return total
+
+            best = lower_chars(max(candidates, key=score))
+            for i, char in enumerate(best):
+                output[start + i] = char.upper() if text[start + i].isupper() else char
+
+        predictions = "".join(output)
+
         assert len(predictions.split(" ")) == len(test.data.split(" "))
 
         return predictions

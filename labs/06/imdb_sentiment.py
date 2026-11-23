@@ -24,8 +24,15 @@ import urllib.request
 import numpy as np
 import numpy.typing as npt
 import sklearn.feature_extraction
+import sklearn.feature_extraction.text
 import sklearn.metrics
 import sklearn.model_selection
+import sklearn.feature_extraction._stop_words
+import sklearn.pipeline
+import sklearn.preprocessing
+import sklearn.neural_network
+import sklearn.linear_model
+import sklearn.ensemble
 
 parser = argparse.ArgumentParser()
 # These arguments will be set appropriately by ReCodEx, even if you change them.
@@ -35,6 +42,7 @@ parser.add_argument("--seed", default=42, type=int, help="Random seed")
 # For these and any other arguments you add, ReCodEx will keep your default value.
 parser.add_argument("--model_path", default="imdb_sentiment.model", type=str, help="Model path")
 # TODO: Add other arguments (typically hyperparameters) as you need.
+parser.add_argument("--final", default=False, action="store_true", help="Train on all data")
 
 
 class Dataset:
@@ -96,14 +104,21 @@ def main(args: argparse.Namespace) -> Optional[npt.ArrayLike]:
         # embeddings: averaging, max pooling, etc. You can also try to exclude
         # words that do not contribute much to the meaning of the sentence (stop
         # words). See `sklearn.feature_extraction._stop_words.ENGLISH_STOP_WORDS`.
-        train_as_vectors = ...
+        train_as_vectors = train.data
 
         train_x, validation_x, train_y, validation_y = sklearn.model_selection.train_test_split(
             train_as_vectors, train.target, test_size=0.25, random_state=args.seed)
 
         print("Training.", file=sys.stderr)
         # TODO: Train a model of your choice on the given data.
-        model = ...
+        model = sklearn.pipeline.make_pipeline(
+            sklearn.feature_extraction.text.TfidfVectorizer(
+                ngram_range=(1, 2), min_df=3, max_features=200000, sublinear_tf=True),
+            sklearn.linear_model.LogisticRegression(C=10, max_iter=1000))
+        if args.final:
+            model.fit(train_as_vectors, train.target)
+        else:
+            model.fit(train_x, train_y)
 
         print("Evaluation.", file=sys.stderr)
         validation_predictions = model.predict(validation_x)
@@ -123,11 +138,11 @@ def main(args: argparse.Namespace) -> Optional[npt.ArrayLike]:
 
         # TODO: Start by preprocessing the test data, ideally using the same
         # code as during training.
-        test_as_vectors = ...
+        test_as_vectors = test.data
 
         # TODO: Generate `predictions` with the test set predictions, either
         # as a Python list or a NumPy array.
-        predictions = ...
+        predictions = model.predict(test_as_vectors)
 
         return predictions
 

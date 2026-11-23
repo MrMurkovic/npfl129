@@ -24,6 +24,9 @@ import numpy as np
 import sklearn.metrics
 import sklearn.model_selection
 import sklearn.svm
+import re
+import collections
+import scipy.sparse
 
 parser = argparse.ArgumentParser()
 # These arguments will be set appropriately by ReCodEx, even if you change them.
@@ -66,6 +69,13 @@ def main(args: argparse.Namespace) -> float:
     # TODO: Create a feature for every term that is present at least twice
     # in the training data. A term is every maximal sequence of at least 1 word character,
     # where a word character corresponds to a regular expression `\w`.
+    term_counts = collections.Counter()
+    for document in train_data:
+        term_counts.update(re.findall(r"\w+", document))
+
+    vocabulary = {term: i for i, term in enumerate(
+        term for term, count in term_counts.items() if count >= 2)}
+
 
     # TODO: For each document, compute its features as
     # - term frequency (TF), if `args.tf` is set (term frequency is
@@ -78,14 +88,46 @@ def main(args: argparse.Namespace) -> float:
     # - use the variant which contains `+1` in the denominator;
     # - the IDFs are computed on the train set and then reused without
     #   modification on the test set.
+    def count_matrix(documents):
+        rows, columns = [], []
+        for i, document in enumerate(documents):
+            for term in re.findall(r"\w+", document):
+                if term in vocabulary:
+                    rows.append(i)
+                    columns.append(vocabulary[term])
+        return scipy.sparse.csr_matrix(
+            (np.ones(len(rows)), (rows, columns)),
+            shape=(len(documents), len(vocabulary))
+        )
+
+    train_counts = count_matrix(train_data)
+    test_counts = count_matrix(test_data)
+
+    def features(counts):
+        if args.tf:
+            sums = np.maximum(np.asarray(counts.sum(axis=1)).ravel(), 1)
+            return scipy.sparse.diags(1 / sums) @ counts
+        return (counts > 0).astype(float)
+
+    train_features = features(train_counts)
+    test_features = features(test_counts)
+
+    if args.idf:
+        document_frequency = np.asarray((train_counts > 0).sum(axis=0)).ravel()
+        idf = np.log(len(train_data) / (document_frequency + 1))
+        train_features = train_features @ scipy.sparse.diags(idf)
+        test_features = test_features @ scipy.sparse.diags(idf)
 
     # TODO: Train a `sklearn.svm.LinearSVC(dual=False, C=100)` multi-class
     # classification model on the train set, and classify the test set.
     # We use this model instead of `sklearn.linear_model.LogisticRegression`
     # because it is several times faster on our data.
+    model = sklearn.svm.LinearSVC(dual=False, C=100)
+    model.fit(train_features, train_target)
+    test_predictions = model.predict(test_features)
 
     # TODO: Evaluate the test set performance using a macro-averaged F1 score.
-    f1_score = ...
+    f1_score = sklearn.metrics.f1_score(test_target, test_predictions, average="macro")
 
     return 100 * f1_score
 
